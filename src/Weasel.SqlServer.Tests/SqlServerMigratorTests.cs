@@ -60,6 +60,31 @@ public class SqlServerMigratorTests
             $"Expected {description} to be rejected");
     }
 
+    /// <summary>
+    ///     An opening bracket cannot close a delimited identifier, so it never escapes one and
+    ///     SQL Server accepts it. A real database's primary key named
+    ///     <c>PK_[DimensionStdValueTypes</c> was refused here, which stopped its whole migration.
+    /// </summary>
+    [Theory]
+    [InlineData("PK_[DimensionStdValueTypes")]
+    [InlineData("[leading")]
+    [InlineData("trailing[")]
+    public void assert_identifier_accepts_an_opening_bracket(string name)
+    {
+        Should.NotThrow(() => new SqlServerMigrator().AssertValidIdentifier(name));
+    }
+
+    /// <summary>
+    ///     The reason the opening bracket was rejected was to catch an already-bracketed name.
+    ///     The closing bracket still does that on its own, because such a name ends with one.
+    /// </summary>
+    [Fact]
+    public void an_already_bracketed_name_is_still_rejected()
+    {
+        Should.Throw<InvalidOperationException>(
+            () => new SqlServerMigrator().AssertValidIdentifier("[users]"));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

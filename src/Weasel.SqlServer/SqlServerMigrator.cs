@@ -140,10 +140,17 @@ $$;
     /// <summary>
     ///     The characters SQL Server delimits identifiers with. <c>]</c> is what closes a
     ///     <c>[...]</c> delimited identifier and <c>"</c> what closes a quoted one (SQL Server accepts both,
-    ///     the latter under <c>QUOTED_IDENTIFIER ON</c>); <c>[</c> is rejected alongside <c>]</c> so that an
-    ///     already-bracketed name is caught rather than being bracketed a second time.
+    ///     the latter under <c>QUOTED_IDENTIFIER ON</c>).
     /// </summary>
-    private const string UnsafeIdentifierCharacters = "[]\"";
+    /// <remarks>
+    ///     <c>[</c> is deliberately absent. It cannot end a delimited identifier, so it never escapes
+    ///     one -- SQL Server accepts <c>[PK_[Dimension]</c> as a name and only <c>]</c> has to be
+    ///     doubled. It was rejected here to catch a name that had already been bracketed by its
+    ///     caller, but <c>]</c> alone catches that: a bracketed name ends with one. Rejecting it as
+    ///     well only refused legal names, and a real database's primary key called
+    ///     <c>PK_[DimensionStdValueTypes</c> was enough to stop the whole migration.
+    /// </remarks>
+    private const string UnsafeIdentifierCharacters = "]\"";
 
     /// <summary>
     ///     SQL Server's identifier length limit -- <c>sysname</c> is <c>nvarchar(128)</c>, so anything
