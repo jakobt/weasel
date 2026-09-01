@@ -159,7 +159,7 @@ $$;
                 StringSplitOptions.RemoveEmptyEntries);
         foreach (var sql in sqlCommands)
         {
-            var cmd = conn.CreateCommand(sql);
+            var cmd = ApplyCommandTimeout(conn.CreateCommand(sql));
             logger.SchemaChange(cmd.CommandText);
 
             try

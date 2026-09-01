@@ -114,7 +114,10 @@ public class OracleDbCommandBuilder: DbCommandBuilder
         var commands = new List<DbCommand>(_statements.Count);
         foreach (var statement in _statements)
         {
-            var command = new OracleCommand(statement.Sql) { BindByName = true };
+            var command = new OracleCommand(statement.Sql)
+            {
+                BindByName = true, CommandTimeout = _oracleCommand.CommandTimeout
+            };
 
             for (var i = 0; i < parameters.Length; i++)
             {

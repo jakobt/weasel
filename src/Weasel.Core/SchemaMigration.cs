@@ -93,7 +93,7 @@ public class SchemaMigration
         CancellationToken ct,
         int parameterBudget,
         params ISchemaObject[] schemaObjects
-    ) => determineBatchedAsync(conn, () => new DbCommandBuilder(conn), parameterBudget, ct, schemaObjects);
+    ) => determineBatchedAsync(conn, () => new DbCommandBuilder(conn), parameterBudget, null, ct, schemaObjects);
 
     /// <summary>
     ///     Create a SchemaMigration using the dialect's own command builder and parameter limit.
@@ -111,7 +111,7 @@ public class SchemaMigration
         CancellationToken ct,
         params ISchemaObject[] schemaObjects
     ) => determineBatchedAsync(conn, () => migrator.CreateCommandBuilder(conn),
-        migrator.MaxParametersPerCommand, ct, schemaObjects);
+        migrator.MaxParametersPerCommand, migrator.CommandTimeout, ct, schemaObjects);
 
     /// <summary>
     ///     Create a SchemaMigration using a command builder the caller supplies.
@@ -145,7 +145,7 @@ public class SchemaMigration
             return new SchemaMigration(deltas);
         }
 
-        await determineBatchAsync(conn, builder, schemaObjects, deltas, ct).ConfigureAwait(false);
+        await determineBatchAsync(conn, builder, schemaObjects, deltas, null, ct).ConfigureAwait(false);
 
         postProcess(deltas);
 
@@ -156,6 +156,7 @@ public class SchemaMigration
         DbConnection conn,
         Func<DbCommandBuilder> newBuilder,
         int parameterBudget,
+        int? commandTimeout,
         CancellationToken ct,
         ISchemaObject[] schemaObjects
     )
@@ -179,7 +180,7 @@ public class SchemaMigration
 
         foreach (var batch in BatchByParameterBudget(schemaObjects, cost, parameterBudget))
         {
-            await determineBatchAsync(conn, newBuilder(), batch, deltas, ct).ConfigureAwait(false);
+            await determineBatchAsync(conn, newBuilder(), batch, deltas, commandTimeout, ct).ConfigureAwait(false);
         }
 
         // Once over the complete delta set rather than per batch, so a delta can still look across
@@ -244,9 +245,15 @@ public class SchemaMigration
         DbCommandBuilder builder,
         ISchemaObject[] schemaObjects,
         List<ISchemaObjectDelta> deltas,
+        int? commandTimeout,
         CancellationToken ct
     )
     {
+        if (commandTimeout.HasValue)
+        {
+            builder.Command.CommandTimeout = commandTimeout.Value;
+        }
+
         for (var i = 0; i < schemaObjects.Length; i++)
         {
             // Between objects, not before the first: a builder that splits on this boundary would
@@ -421,8 +428,8 @@ public class SchemaMigration
         var writer = new StringWriter();
         WriteAllRollbacks(writer, rules);
 
-        return conn
-            .CreateCommand(writer.ToString())
+        return rules
+            .ApplyCommandTimeout(conn.CreateCommand(writer.ToString()))
             .ExecuteNonQueryAsync(ct);
     }
 }

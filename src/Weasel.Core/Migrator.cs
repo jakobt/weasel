@@ -308,6 +308,42 @@ public abstract class
     /// </remarks>
     public virtual int MaxParametersPerCommand => 60000;
 
+    /// <summary>
+    ///     How long, in seconds, a command issued through this migrator is given before the driver
+    ///     aborts it. <c>null</c> -- the default -- leaves the command alone, so the value continues
+    ///     to come from the connection string's <c>Command Timeout</c> keyword or, failing that, the
+    ///     driver's own default of 30 seconds.
+    /// </summary>
+    /// <remarks>
+    ///     Covers the commands the migrator itself issues: schema introspection through
+    ///     <see cref="SchemaMigration.DetermineAsync(DbConnection, Migrator, CancellationToken, ISchemaObject[])" />,
+    ///     the DDL and rollback statements of an apply, the fingerprint bookkeeping behind
+    ///     <see cref="UseSchemaFingerprinting" />, and <see cref="EnsureDatabaseExistsAsync" />. A
+    ///     schema object queried directly -- <c>Table.FetchExistingAsync(conn)</c> and its kin -- is
+    ///     handed only a connection and so has no migrator to read this from.
+    ///     <para>
+    ///     The default stays <c>null</c> rather than some larger number because any explicit value
+    ///     would also override a <c>Command Timeout</c> already set on the connection string, which is
+    ///     the only lever operators have had until now -- a caller who raised it there would find it
+    ///     silently lowered again.
+    ///     </para>
+    /// </remarks>
+    public int? CommandTimeout { get; set; }
+
+    /// <summary>
+    ///     Stamp <see cref="CommandTimeout" /> onto a command Weasel is about to execute, leaving the
+    ///     command untouched when no timeout is configured.
+    /// </summary>
+    protected internal T ApplyCommandTimeout<T>(T command) where T : DbCommand
+    {
+        if (CommandTimeout.HasValue)
+        {
+            command.CommandTimeout = CommandTimeout.Value;
+        }
+
+        return command;
+    }
+
     public abstract void AssertValidIdentifier(string name);
 
     /// <summary>

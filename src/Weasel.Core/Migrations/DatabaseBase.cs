@@ -361,7 +361,7 @@ public abstract class DatabaseBase<TConnection>: IDatabase<TConnection>, IDataba
             if (fingerprint != null)
             {
                 var stamped = await SchemaFingerprint
-                    .HasStampAsync(conn, Migrator.DefaultSchemaName, fingerprint, ct).ConfigureAwait(false);
+                    .HasStampAsync(conn, Migrator, fingerprint, ct).ConfigureAwait(false);
                 if (stamped)
                 {
                     MarkAllFeaturesAsChecked();
@@ -395,7 +395,7 @@ public abstract class DatabaseBase<TConnection>: IDatabase<TConnection>, IDataba
                 if (fingerprint != null)
                 {
                     var stamped = await SchemaFingerprint
-                        .HasStampAsync(conn, Migrator.DefaultSchemaName, fingerprint, ct).ConfigureAwait(false);
+                        .HasStampAsync(conn, Migrator, fingerprint, ct).ConfigureAwait(false);
                     if (stamped)
                     {
                         MarkAllFeaturesAsChecked();
@@ -415,7 +415,7 @@ public abstract class DatabaseBase<TConnection>: IDatabase<TConnection>, IDataba
                 if (fingerprint != null)
                 {
                     // Stamp only after the apply succeeded, still under the global lock.
-                    await SchemaFingerprint.RecordAsync(conn, Migrator.DefaultSchemaName, fingerprint, ct)
+                    await SchemaFingerprint.RecordAsync(conn, Migrator, fingerprint, ct)
                         .ConfigureAwait(false);
                 }
 

@@ -67,12 +67,14 @@ internal static class SchemaFingerprint
     /// hash and is indifferent to its neighbours' rows. A missing table (fresh database, feature never
     /// used) simply reads as "no stamp".
     /// </summary>
-    public static async Task<bool> HasStampAsync(DbConnection conn, string schemaName, string fingerprint,
+    public static async Task<bool> HasStampAsync(DbConnection conn, Migrator migrator, string fingerprint,
         CancellationToken ct)
     {
+        var schemaName = migrator.DefaultSchemaName;
+
         try
         {
-            await using var cmd = conn.CreateCommand();
+            await using var cmd = migrator.ApplyCommandTimeout(conn.CreateCommand());
             cmd.CommandText = $"select fingerprint from {schemaName}.{TableName} where fingerprint = @fingerprint";
 
             var parameter = cmd.CreateParameter();
@@ -94,12 +96,14 @@ internal static class SchemaFingerprint
     /// "already exists" failure is swallowed — plain CREATE TABLE keeps this provider-neutral
     /// (not every provider supports IF NOT EXISTS).
     /// </summary>
-    public static async Task RecordAsync(DbConnection conn, string schemaName, string fingerprint,
+    public static async Task RecordAsync(DbConnection conn, Migrator migrator, string fingerprint,
         CancellationToken ct)
     {
+        var schemaName = migrator.DefaultSchemaName;
+
         try
         {
-            await using var create = conn.CreateCommand();
+            await using var create = migrator.ApplyCommandTimeout(conn.CreateCommand());
             create.CommandText =
                 $"create table {schemaName}.{TableName} (fingerprint varchar(128) not null primary key, applied_at varchar(64) not null)";
             await create.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
@@ -109,18 +113,18 @@ internal static class SchemaFingerprint
             // Already exists — fine.
         }
 
-        await dropLegacyTableAsync(conn, schemaName, ct).ConfigureAwait(false);
+        await dropLegacyTableAsync(conn, migrator, ct).ConfigureAwait(false);
 
         // Delete-then-insert rather than an upsert: the syntax for the latter is not portable, and
         // this runs only on the slow path, immediately after a full apply.
-        await using (var delete = conn.CreateCommand())
+        await using (var delete = migrator.ApplyCommandTimeout(conn.CreateCommand()))
         {
             delete.CommandText = $"delete from {schemaName}.{TableName} where fingerprint = @fingerprint";
             AddParameter(delete, "@fingerprint", fingerprint);
             await delete.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 
-        await using (var insert = conn.CreateCommand())
+        await using (var insert = migrator.ApplyCommandTimeout(conn.CreateCommand()))
         {
             insert.CommandText =
                 $"insert into {schemaName}.{TableName} (fingerprint, applied_at) values (@fingerprint, @appliedAt)";
@@ -129,7 +133,7 @@ internal static class SchemaFingerprint
             await insert.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 
-        await pruneAsync(conn, schemaName, ct).ConfigureAwait(false);
+        await pruneAsync(conn, migrator, ct).ConfigureAwait(false);
     }
 
     private static void AddParameter(DbCommand command, string name, string value)
@@ -145,12 +149,12 @@ internal static class SchemaFingerprint
     /// a dead table around forever. Best effort: it is housekeeping, and a caller without DROP rights
     /// should still get a working stamp.
     /// </summary>
-    private static async Task dropLegacyTableAsync(DbConnection conn, string schemaName, CancellationToken ct)
+    private static async Task dropLegacyTableAsync(DbConnection conn, Migrator migrator, CancellationToken ct)
     {
         try
         {
-            await using var drop = conn.CreateCommand();
-            drop.CommandText = $"drop table {schemaName}.{LegacyTableName}";
+            await using var drop = migrator.ApplyCommandTimeout(conn.CreateCommand());
+            drop.CommandText = $"drop table {migrator.DefaultSchemaName}.{LegacyTableName}";
             await drop.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
         catch (DbException)
@@ -166,13 +170,15 @@ internal static class SchemaFingerprint
     /// provider-specific. Best effort for the same reason as the legacy drop: an apply that succeeded
     /// must not be reported as failed because its housekeeping could not run.
     /// </summary>
-    private static async Task pruneAsync(DbConnection conn, string schemaName, CancellationToken ct)
+    private static async Task pruneAsync(DbConnection conn, Migrator migrator, CancellationToken ct)
     {
+        var schemaName = migrator.DefaultSchemaName;
+
         try
         {
             var timestamps = new List<string>();
 
-            await using (var read = conn.CreateCommand())
+            await using (var read = migrator.ApplyCommandTimeout(conn.CreateCommand()))
             {
                 read.CommandText = $"select applied_at from {schemaName}.{TableName} order by applied_at desc";
                 await using var reader = await read.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -187,7 +193,7 @@ internal static class SchemaFingerprint
                 return;
             }
 
-            await using var delete = conn.CreateCommand();
+            await using var delete = migrator.ApplyCommandTimeout(conn.CreateCommand());
             delete.CommandText = $"delete from {schemaName}.{TableName} where applied_at < @threshold";
             AddParameter(delete, "@threshold", timestamps[MaxStamps - 1]);
             await delete.ExecuteNonQueryAsync(ct).ConfigureAwait(false);

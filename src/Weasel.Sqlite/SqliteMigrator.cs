@@ -138,9 +138,9 @@ public class SqliteMigrator: Migrator
         }
     }
 
-    private static async Task executeCommand(DbConnection conn, IMigrationLogger logger, StringWriter writer, CancellationToken ct = default)
+    private async Task executeCommand(DbConnection conn, IMigrationLogger logger, StringWriter writer, CancellationToken ct = default)
     {
-        var cmd = conn.CreateCommand(writer.ToString());
+        var cmd = ApplyCommandTimeout(conn.CreateCommand(writer.ToString()));
         logger.SchemaChange(cmd.CommandText);
 
         try

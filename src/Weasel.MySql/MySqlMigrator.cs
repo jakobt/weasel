@@ -158,7 +158,7 @@ public class MySqlMigrator: Migrator
         }
     }
 
-    private static async Task createSchemas(
+    private async Task createSchemas(
         SchemaMigration migration,
         DbConnection conn,
         IMigrationLogger logger,
@@ -176,7 +176,7 @@ public class MySqlMigrator: Migrator
         }
     }
 
-    private static async Task executeCommand(DbConnection conn, IMigrationLogger logger, StringWriter writer, CancellationToken ct = default)
+    private async Task executeCommand(DbConnection conn, IMigrationLogger logger, StringWriter writer, CancellationToken ct = default)
     {
         var sql = writer.ToString().Trim();
 
@@ -191,7 +191,7 @@ public class MySqlMigrator: Migrator
         // semicolon-separated statements from a single command, so the split bought nothing and
         // cost correctness (weasel#452).
         {
-            var cmd = conn.CreateCommand();
+            var cmd = ApplyCommandTimeout(conn.CreateCommand());
             cmd.CommandText = sql;
             logger.SchemaChange(cmd.CommandText);
 
@@ -230,7 +230,7 @@ public class MySqlMigrator: Migrator
         await using var adminConn = new MySqlConnection(builder.ConnectionString);
         await adminConn.OpenAsync(ct).ConfigureAwait(false);
 
-        var cmd = adminConn.CreateCommand();
+        var cmd = ApplyCommandTimeout(adminConn.CreateCommand());
         cmd.CommandText = $"CREATE DATABASE IF NOT EXISTS {SchemaUtils.QuoteName(databaseName)}";
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }

@@ -182,7 +182,7 @@ END;");
         }
     }
 
-    private static async Task createSchemas(
+    private async Task createSchemas(
         SchemaMigration migration,
         DbConnection conn,
         IMigrationLogger logger,
@@ -193,7 +193,7 @@ END;");
         foreach (var schemaName in migration.Schemas)
         {
             var sql = CreateSchemaStatementFor(schemaName);
-            var cmd = conn.CreateCommand(sql);
+            var cmd = ApplyCommandTimeout(conn.CreateCommand(sql));
             logger.SchemaChange(cmd.CommandText);
 
             try
@@ -212,7 +212,7 @@ END;");
         }
     }
 
-    private static async Task executeCommand(DbConnection conn, IMigrationLogger logger, StringWriter writer, CancellationToken ct = default)
+    private async Task executeCommand(DbConnection conn, IMigrationLogger logger, StringWriter writer, CancellationToken ct = default)
     {
         var sql = writer.ToString();
 
@@ -225,7 +225,7 @@ END;");
 
         foreach (var statement in statements)
         {
-            var cmd = conn.CreateCommand(statement);
+            var cmd = ApplyCommandTimeout(conn.CreateCommand(statement));
             logger.SchemaChange(cmd.CommandText);
 
             try
@@ -277,7 +277,7 @@ END;";
 
         try
         {
-            var cmd = connection.CreateCommand();
+            var cmd = ApplyCommandTimeout(connection.CreateCommand());
             cmd.CommandText = CreateSchemaStatementFor(schemaName);
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }

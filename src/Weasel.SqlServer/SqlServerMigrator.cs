@@ -195,7 +195,7 @@ $$;
         }
     }
 
-    private static async Task createSchemas(
+    private async Task createSchemas(
         SchemaMigration migration,
         DbConnection conn,
         IMigrationLogger logger,
@@ -213,9 +213,9 @@ $$;
         }
     }
 
-    private static async Task executeCommand(DbConnection conn, IMigrationLogger logger, StringWriter writer, CancellationToken ct = default)
+    private async Task executeCommand(DbConnection conn, IMigrationLogger logger, StringWriter writer, CancellationToken ct = default)
     {
-        var cmd = conn.CreateCommand(writer.ToString());
+        var cmd = ApplyCommandTimeout(conn.CreateCommand(writer.ToString()));
         logger.SchemaChange(cmd.CommandText);
 
         try
@@ -299,7 +299,7 @@ IF NOT EXISTS ( SELECT  *
 
             if (!await databaseExistsAsync(adminConn, databaseName, ct).ConfigureAwait(false))
             {
-                var createCmd = adminConn.CreateCommand();
+                var createCmd = ApplyCommandTimeout(adminConn.CreateCommand());
 
                 // CREATE DATABASE takes no parameters, so the name has to be interpolated. Doubling ']'
                 // is what makes it a well-formed delimited identifier. Bracket rather than
@@ -332,10 +332,10 @@ IF NOT EXISTS ( SELECT  *
             .ConfigureAwait(false);
     }
 
-    private static async Task<bool> databaseExistsAsync(SqlConnection conn, string databaseName,
+    private async Task<bool> databaseExistsAsync(SqlConnection conn, string databaseName,
         CancellationToken ct)
     {
-        var cmd = conn.CreateCommand();
+        var cmd = ApplyCommandTimeout(conn.CreateCommand());
         cmd.CommandText = "SELECT DB_ID(@name)";
 
         var param = cmd.CreateParameter();
@@ -353,7 +353,7 @@ IF NOT EXISTS ( SELECT  *
     ///     racer gets is raised with <c>breakConnection</c> set, so the connection that issued the
     ///     statement is already dead by the time we want to ask this question on it.
     /// </summary>
-    private static async Task<bool> databaseExistsOnNewConnectionAsync(string adminConnectionString,
+    private async Task<bool> databaseExistsOnNewConnectionAsync(string adminConnectionString,
         string databaseName, CancellationToken ct)
     {
         try
