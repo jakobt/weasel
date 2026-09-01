@@ -311,7 +311,7 @@ END;";
 
         foreach (var table in tables)
         {
-            sb.AppendLine($"DELETE FROM {table.QualifiedName};");
+            sb.AppendLine($"DELETE FROM {SchemaUtils.QuoteName(table.Schema)}.{SchemaUtils.QuoteName(table.Name)};");
         }
 
         return sb.ToString();

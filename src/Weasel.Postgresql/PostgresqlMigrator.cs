@@ -474,7 +474,9 @@ $$;
 
         var sb = new StringBuilder();
         sb.Append("TRUNCATE TABLE ");
-        sb.Append(string.Join(", ", tables.Select(t => t.QualifiedName)));
+        sb.Append(string.Join(", ",
+            tables.Select(t =>
+                $"{SchemaUtils.QuoteName(t.Schema, SchemaUtils.IdentifierUsage.General)}.{SchemaUtils.QuoteName(t.Name, SchemaUtils.IdentifierUsage.General)}")));
 
         if (resetIdentity)
         {

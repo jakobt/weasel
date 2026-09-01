@@ -252,7 +252,7 @@ public class MySqlMigrator: Migrator
 
         foreach (var table in tables)
         {
-            sb.AppendLine($"TRUNCATE TABLE {table.QualifiedName};");
+            sb.AppendLine($"TRUNCATE TABLE {SchemaUtils.QuoteQualifiedName(table.Schema, table.Name)};");
         }
 
         sb.AppendLine("SET FOREIGN_KEY_CHECKS = 1;");

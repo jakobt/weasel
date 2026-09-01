@@ -424,19 +424,25 @@ IF NOT EXISTS ( SELECT  *
 
         foreach (var table in tables)
         {
-            sb.AppendLine($"DELETE FROM {table};");
+            sb.AppendLine($"DELETE FROM {QuoteQualifiedName(table)};");
         }
 
         if (resetIdentity)
         {
             foreach (var table in tables)
             {
-                sb.AppendLine($"BEGIN TRY DBCC CHECKIDENT('{table}', RESEED, 0); END TRY BEGIN CATCH END CATCH;");
+                // The name lands inside a string literal here, not bare as in the DELETE above.
+                // A literal is terminated by ' and not by ], so bracketing alone does not protect it.
+                var literal = SchemaUtils.EscapeLiteral(QuoteQualifiedName(table));
+                sb.AppendLine($"BEGIN TRY DBCC CHECKIDENT('{literal}', RESEED, 0); END TRY BEGIN CATCH END CATCH;");
             }
         }
 
         return sb.ToString();
     }
+
+    private static string QuoteQualifiedName(DbObjectName table)
+        => $"{SchemaUtils.QuoteName(table.Schema)}.{SchemaUtils.QuoteName(table.Name)}";
 
     public override IDatabaseWithTables CreateDatabase(DbConnection connection, string? identifier = null)
     {
