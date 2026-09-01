@@ -22,7 +22,7 @@ public partial class Table
         var nameWithSchemaQuotedParam = builder.AddParameter($"{Identifier.Schema}.{quotedName}").ParameterName;
 
         builder.Append($@"
-select column_name, data_type, character_maximum_length, udt_name, column_default, is_nullable, is_generated, generation_expression
+select column_name, data_type, character_maximum_length, udt_name, column_default, is_nullable, is_generated, generation_expression, domain_schema, domain_name
 from information_schema.columns where table_schema = :{schemaParam} and table_name = :{nameParam}
 order by ordinal_position;
 
@@ -302,19 +302,27 @@ order by column_index;
         var column = new TableColumn(await reader.GetFieldValueAsync<string>(0, ct).ConfigureAwait(false),
             await reader.GetFieldValueAsync<string>(1, ct).ConfigureAwait(false));
 
-        if (column.Type.Equals("user-defined"))
+        var domain = await readDomainTypeAsync(reader, ct).ConfigureAwait(false);
+        if (domain != null)
         {
-            column.Type = await reader.GetFieldValueAsync<string>(3, ct).ConfigureAwait(false);
+            column.Type = domain;
         }
-        else if (column.Type.Equals("array"))
+        else
         {
-            column.Type = NormalizeArrayType(await reader.GetFieldValueAsync<string>(3, ct).ConfigureAwait(false));
-        }
+            if (column.Type.Equals("user-defined"))
+            {
+                column.Type = await reader.GetFieldValueAsync<string>(3, ct).ConfigureAwait(false);
+            }
+            else if (column.Type.Equals("array"))
+            {
+                column.Type = NormalizeArrayType(await reader.GetFieldValueAsync<string>(3, ct).ConfigureAwait(false));
+            }
 
-        if (!await reader.IsDBNullAsync(2, ct).ConfigureAwait(false))
-        {
-            var length = await reader.GetFieldValueAsync<int>(2, ct).ConfigureAwait(false);
-            column.Type = $"{column.Type}({length})";
+            if (!await reader.IsDBNullAsync(2, ct).ConfigureAwait(false))
+            {
+                var length = await reader.GetFieldValueAsync<int>(2, ct).ConfigureAwait(false);
+                column.Type = $"{column.Type}({length})";
+            }
         }
 
         if (!await reader.IsDBNullAsync(4, ct).ConfigureAwait(false))
@@ -334,6 +342,21 @@ order by column_index;
         }
 
         return column;
+    }
+
+    private static async Task<string?> readDomainTypeAsync(DbDataReader reader, CancellationToken ct)
+    {
+        if (await reader.IsDBNullAsync(9, ct).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        var schema = await reader.GetFieldValueAsync<string>(8, ct).ConfigureAwait(false);
+        var name = await reader.GetFieldValueAsync<string>(9, ct).ConfigureAwait(false);
+
+        return schema.Equals("public", StringComparison.OrdinalIgnoreCase)
+            ? name.ToLowerInvariant()
+            : $"{schema}.{name}".ToLowerInvariant();
     }
 
     private async Task readConstraintsAsync(DbDataReader reader, Table existing, CancellationToken ct = default)
