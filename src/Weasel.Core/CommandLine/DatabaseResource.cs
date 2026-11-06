@@ -23,6 +23,11 @@ public interface IDatabaseWithRewindableState
     Task ClearState(CancellationToken token);
 }
 
+public interface IDatabaseWithGlobalLock
+{
+    Task<SchemaPatchDifference> ApplyAllConfiguredChangesUnderGlobalLockAsync(CancellationToken token);
+}
+
 public class DatabaseResource: IStatefulResource
 {
     public Uri SubjectUri { get; }
@@ -58,6 +63,7 @@ public class DatabaseResource: IStatefulResource
 
     public Task Setup(CancellationToken token)
     {
+        if (Database is IDatabaseWithGlobalLock d) return d.ApplyAllConfiguredChangesUnderGlobalLockAsync(token);
         return Database.ApplyAllConfiguredChangesToDatabaseAsync(ct: token);
     }
 

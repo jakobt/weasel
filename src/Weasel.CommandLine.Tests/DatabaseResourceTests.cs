@@ -79,6 +79,24 @@ public class DatabaseResourceTests
     }
 
     [Fact]
+    public async Task setup_applies_under_the_global_lock_when_the_database_offers_one()
+    {
+        var database = Substitute.For<IDatabase, IDatabaseWithGlobalLock>();
+        database.Describe().Returns(new DatabaseDescriptor
+        {
+            DatabaseName = "Foo", ServerName = "server1", SchemaOrNamespace = "schema1", Engine = "postgresql"
+        });
+
+        var resource = new DatabaseResource(database, "marten://db".ToUri());
+        using var cancellation = new CancellationTokenSource();
+
+        await resource.Setup(cancellation.Token);
+
+        await database.As<IDatabaseWithGlobalLock>().Received().ApplyAllConfiguredChangesUnderGlobalLockAsync(cancellation.Token);
+        await database.DidNotReceiveWithAnyArgs().ApplyAllConfiguredChangesToDatabaseAsync();
+    }
+
+    [Fact]
     public async Task determine_status_with_no_changes()
     {
         var delta = Substitute.For<ISchemaObjectDelta>();
