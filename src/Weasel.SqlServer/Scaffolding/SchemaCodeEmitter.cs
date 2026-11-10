@@ -31,6 +31,9 @@ internal static class SchemaCodeEmitter
                         writeColumn(ctor, column, scaffolded);
                     }
 
+                    ctor.Line();
+                    ctor.Line("DetectColumnDrift = true;");
+
                     writePrimaryKey(ctor, scaffolded);
                     writeIndexes(ctor, table);
                     writeForeignKeys(ctor, table);

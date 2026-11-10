@@ -96,6 +96,33 @@ create unique index idx_customer_name on roundtrip.customer (name) where name is
         await assertNoDrift(result, "RichRoundTrip");
     }
 
+    [Theory]
+    [InlineData("alter table roundtrip.customer alter column name nvarchar(200) null")]
+    [InlineData("alter table roundtrip.customer drop constraint df_balance")]
+    [InlineData("alter table roundtrip.customer add constraint df_balance default (1) for balance")]
+    public async Task a_changed_nullability_or_default_is_reported(string change)
+    {
+        var result = await scaffold(@"
+create table roundtrip.customer (
+    id int not null constraint pk_customer primary key,
+    name nvarchar(200) not null,
+    balance decimal(18,2) not null constraint df_balance default (0)
+);
+");
+        var database = ScaffoldCompilationHarness.BuildDatabase(
+            result, "DriftDetected" + Math.Abs(change.GetHashCode()), ConnectionSource.ConnectionString, "RoundTrip.Generated");
+
+        if (change.Contains("add constraint"))
+        {
+            await theConnection.CreateCommand("alter table roundtrip.customer drop constraint df_balance").ExecuteNonQueryAsync();
+        }
+
+        await theConnection.CreateCommand(change).ExecuteNonQueryAsync();
+
+        var migration = await database.CreateMigrationAsync();
+        migration.Difference.ShouldBe(SchemaPatchDifference.Update);
+    }
+
     [Fact]
     public async Task a_composite_key_table_round_trips_with_no_drift()
     {
