@@ -97,7 +97,8 @@ export default defineConfig({
             { text: 'db-assert', link: '/cli/db-assert' },
             { text: 'db-patch', link: '/cli/db-patch' },
             { text: 'db-dump', link: '/cli/db-dump' },
-            { text: 'db-list', link: '/cli/db-list' }
+            { text: 'db-list', link: '/cli/db-list' },
+            { text: 'db-scaffold', link: '/cli/db-scaffold' }
           ]
         },
         {
