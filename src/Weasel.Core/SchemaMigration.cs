@@ -171,9 +171,17 @@ public class SchemaMigration
         Migrator migrator,
         CancellationToken ct,
         params ISchemaObject[] schemaObjects
-    ) => rereadWhileTheCatalogIsChangingAsync(migrator, ct,
-        () => determineBatchedAsync(conn, () => migrator.CreateCommandBuilder(conn),
-            migrator.MaxParametersPerCommand, ct, schemaObjects));
+    )
+    {
+        if (migrator.AddOnlyMigrations)
+        {
+            foreach (var table in schemaObjects.OfType<ITable>()) table.AddOnlyMigrations = true;
+        }
+
+        return rereadWhileTheCatalogIsChangingAsync(migrator, ct,
+            () => determineBatchedAsync(conn, () => migrator.CreateCommandBuilder(conn),
+                migrator.MaxParametersPerCommand, ct, schemaObjects));
+    }
 
     /// <summary>
     ///     Attempts of an introspection read, including the first.

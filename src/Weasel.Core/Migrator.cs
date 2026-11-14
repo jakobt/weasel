@@ -74,6 +74,8 @@ public abstract class
     /// </remarks>
     public bool RefuseDestructiveChanges { get; set; }
 
+    public bool AddOnlyMigrations { get; set; }
+
     public SqlFormatting Formatting { get; set; } = SqlFormatting.Pretty;
 
     /// <summary>
