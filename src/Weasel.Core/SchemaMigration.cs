@@ -154,7 +154,7 @@ public class SchemaMigration
         CancellationToken ct,
         int parameterBudget,
         params ISchemaObject[] schemaObjects
-    ) => determineBatchedAsync(conn, () => new DbCommandBuilder(conn), parameterBudget, ct, schemaObjects);
+    ) => determineBatchedAsync(conn, () => new DbCommandBuilder(conn), parameterBudget, false, ct, schemaObjects);
 
     /// <summary>
     ///     Create a SchemaMigration using the dialect's own command builder and parameter limit.
@@ -171,17 +171,9 @@ public class SchemaMigration
         Migrator migrator,
         CancellationToken ct,
         params ISchemaObject[] schemaObjects
-    )
-    {
-        if (migrator.AddOnlyMigrations)
-        {
-            foreach (var table in schemaObjects.OfType<ITable>()) table.AddOnlyMigrations = true;
-        }
-
-        return rereadWhileTheCatalogIsChangingAsync(migrator, ct,
-            () => determineBatchedAsync(conn, () => migrator.CreateCommandBuilder(conn),
-                migrator.MaxParametersPerCommand, ct, schemaObjects));
-    }
+    ) => rereadWhileTheCatalogIsChangingAsync(migrator, ct,
+        () => determineBatchedAsync(conn, () => migrator.CreateCommandBuilder(conn),
+            migrator.MaxParametersPerCommand, migrator.AddOnlyMigrations, ct, schemaObjects));
 
     /// <summary>
     ///     Attempts of an introspection read, including the first.
@@ -261,7 +253,7 @@ public class SchemaMigration
             return new SchemaMigration(deltas);
         }
 
-        await determineBatchAsync(conn, builder, schemaObjects, deltas, ct).ConfigureAwait(false);
+        await determineBatchAsync(conn, builder, schemaObjects, false, deltas, ct).ConfigureAwait(false);
 
         postProcess(deltas);
 
@@ -272,6 +264,7 @@ public class SchemaMigration
         DbConnection conn,
         Func<DbCommandBuilder> newBuilder,
         int parameterBudget,
+        bool addOnlyMigrations,
         CancellationToken ct,
         ISchemaObject[] schemaObjects
     )
@@ -298,7 +291,7 @@ public class SchemaMigration
         {
             // The whole set fits in one command, so the builder just configured is the one that
             // executes: one render, no probes. This is the overwhelmingly common case.
-            await executeBatchAsync(conn, builder, schemaObjects, deltas, ct).ConfigureAwait(false);
+            await executeBatchAsync(conn, builder, schemaObjects, addOnlyMigrations, deltas, ct).ConfigureAwait(false);
         }
         else
         {
@@ -308,7 +301,7 @@ public class SchemaMigration
 
             foreach (var batch in BatchByParameterBudget(schemaObjects, costs, budget))
             {
-                await determineBatchAsync(conn, newBuilder(), batch, deltas, ct).ConfigureAwait(false);
+                await determineBatchAsync(conn, newBuilder(), batch, addOnlyMigrations, deltas, ct).ConfigureAwait(false);
             }
         }
 
@@ -385,13 +378,14 @@ public class SchemaMigration
         DbConnection conn,
         DbCommandBuilder builder,
         ISchemaObject[] schemaObjects,
+        bool addOnlyMigrations,
         List<ISchemaObjectDelta> deltas,
         CancellationToken ct
     )
     {
         configureBatch(builder, schemaObjects);
 
-        await executeBatchAsync(conn, builder, schemaObjects, deltas, ct).ConfigureAwait(false);
+        await executeBatchAsync(conn, builder, schemaObjects, addOnlyMigrations, deltas, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -429,18 +423,21 @@ public class SchemaMigration
         DbConnection conn,
         DbCommandBuilder builder,
         ISchemaObject[] schemaObjects,
+        bool addOnlyMigrations,
         List<ISchemaObjectDelta> deltas,
         CancellationToken ct
     )
     {
         await using var reader = await conn.ExecuteReaderAsync(builder, ct).ConfigureAwait(false);
 
-        deltas.Add(await schemaObjects[0].CreateDeltaAsync(reader, ct).ConfigureAwait(false));
-
-        for (var i = 1; i < schemaObjects.Length; i++)
+        for (var i = 0; i < schemaObjects.Length; i++)
         {
-            await reader.NextResultAsync(ct).ConfigureAwait(false);
-            deltas.Add(await schemaObjects[i].CreateDeltaAsync(reader, ct).ConfigureAwait(false));
+            if (i > 0) await reader.NextResultAsync(ct).ConfigureAwait(false);
+
+            var delta = addOnlyMigrations && schemaObjects[i] is ITable table
+                ? table.CreateDeltaAsync(reader, addOnlyMigrations: true, ct)
+                : schemaObjects[i].CreateDeltaAsync(reader, ct);
+            deltas.Add(await delta.ConfigureAwait(false));
         }
 
         try

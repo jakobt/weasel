@@ -9,10 +9,14 @@ public partial class Table
     /// <summary>
     ///     Creates a delta from the four result sets <see cref="ConfigureQueryCommand" /> registers.
     /// </summary>
-    public override async Task<ISchemaObjectDelta> CreateDeltaAsync(DbDataReader reader, CancellationToken ct = default)
+    public override Task<ISchemaObjectDelta> CreateDeltaAsync(DbDataReader reader, CancellationToken ct = default)
+        => CreateDeltaAsync(reader, false, ct);
+
+    public override async Task<ISchemaObjectDelta> CreateDeltaAsync(DbDataReader reader, bool addOnlyMigrations,
+        CancellationToken ct = default)
     {
         var existing = await ReadExistingFromReaderAsync(reader, ct).ConfigureAwait(false);
-        return new TableDelta(this, existing);
+        return new TableDelta(this, existing, addOnlyMigrations);
     }
 
     public async Task<TableDelta> FindDeltaAsync(FbConnection conn, CancellationToken ct = default)

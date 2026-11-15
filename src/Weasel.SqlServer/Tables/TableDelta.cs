@@ -16,7 +16,12 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithDeferra
     /// </summary>
     public string? InvalidReason { get; private set; }
 
-    public TableDelta(Table expected, Table? actual): base(expected, actual)
+    public TableDelta(Table expected, Table? actual): this(expected, actual, false)
+    {
+    }
+
+    public TableDelta(Table expected, Table? actual, bool addOnlyMigrations)
+        : base(expected, actual, addOnlyMigrations || expected?.AddOnlyMigrations == true)
     {
     }
 
@@ -84,19 +89,19 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithDeferra
         _withheldDrops.Clear();
 
         Columns = new ItemDelta<TableColumn>(expected.Columns,
-            droppable(expected, expected.Columns, actual.Columns, "column"),
+            droppable(expected.Columns, actual.Columns, "column"),
             (e, a) => e.MatchesForDelta(a, expected.DetectColumnDrift));
         // IgnoreIndex is Weasel.Core API and is honoured by the PostgreSQL and SQLite twins; without
         // this SQL Server put an ignored index in Extras and WriteUpdate dropped it.
         var expectedIndexes = expected.Indexes.Where(x => !expected.HasIgnoredIndex(x.Name)).ToArray();
         Indexes = new ItemDelta<IndexDefinition>(
             expectedIndexes,
-            droppable(expected, expectedIndexes, actual.Indexes.Where(x => !expected.HasIgnoredIndex(x.Name)),
+            droppable(expectedIndexes, actual.Indexes.Where(x => !expected.HasIgnoredIndex(x.Name)),
                 "index"),
             (e, a) => e.Matches(a, Expected));
 
         ForeignKeys = new ItemDelta<ForeignKey>(expected.ForeignKeys,
-            droppable(expected, expected.ForeignKeys, actual.ForeignKeys, "foreign key"));
+            droppable(expected.ForeignKeys, actual.ForeignKeys, "foreign key"));
 
         // Conservative check-constraint comparison: only the checks the expected
         // table declares participate, and actual constraints the expected table
@@ -539,9 +544,9 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithDeferra
     ///     model declares, so an undeclared object never becomes an Extra and is never dropped
     ///     (weasel#629). Otherwise everything the catalog reported is in play, exactly as before.
     /// </summary>
-    private IEnumerable<T> droppable<T>(Table expected, IEnumerable<T> expectedItems,
+    private IEnumerable<T> droppable<T>(IEnumerable<T> expectedItems,
         IEnumerable<T> actualItems, string kind) where T : INamed
-        => expected.AddOnlyMigrations
+        => AddOnlyMigrations
             ? AddOnlyMigration.DeclaredOnly(expectedItems, actualItems, kind, _withheldDrops)
             : actualItems;
 

@@ -181,7 +181,11 @@ public interface ISchemaObject
 
 public abstract class SchemaObjectDelta<T>: ISchemaObjectDelta where T : ISchemaObject
 {
-    protected SchemaObjectDelta(T expected, T? actual)
+    protected SchemaObjectDelta(T expected, T? actual) : this(expected, actual, false)
+    {
+    }
+
+    protected SchemaObjectDelta(T expected, T? actual, bool addOnlyMigrations)
     {
         if (expected == null)
         {
@@ -190,12 +194,15 @@ public abstract class SchemaObjectDelta<T>: ISchemaObjectDelta where T : ISchema
 
         Expected = expected;
         Actual = actual;
+        AddOnlyMigrations = addOnlyMigrations;
 
         Difference = compare(Expected, Actual);
     }
 
     public T Expected { get; }
     public T? Actual { get; }
+
+    protected bool AddOnlyMigrations { get; }
 
     public ISchemaObject SchemaObject => Expected;
 

@@ -14,7 +14,12 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithDeferra
     private readonly List<string> _withheldDrops = new();
     private readonly HashSet<string> _deferredForeignKeys = new(StringComparer.OrdinalIgnoreCase);
 
-    public TableDelta(Table expected, Table? actual): base(expected, actual)
+    public TableDelta(Table expected, Table? actual): this(expected, actual, false)
+    {
+    }
+
+    public TableDelta(Table expected, Table? actual, bool addOnlyMigrations)
+        : base(expected, actual, addOnlyMigrations || expected?.AddOnlyMigrations == true)
     {
     }
 
@@ -76,14 +81,14 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithDeferra
         var version = actual.ServerVersion;
 
         Columns = new ItemDelta<TableColumn>(expected.Columns,
-            droppable(expected, expected.Columns, actual.Columns, "column"),
+            droppable(expected.Columns, actual.Columns, "column"),
             (e, a) => e.TypeMatches(a, version)
                       && e.ComputationMatches(a)
                       && (!expected.DetectColumnDrift || e.IsComputed
                                                        || (e.DefaultMatches(a) && e.NullabilityMatches(a))));
 
         ForeignKeys = new ItemDelta<ForeignKey>(expected.ForeignKeys,
-            droppable(expected, expected.ForeignKeys, actual.ForeignKeys, "foreign key"),
+            droppable(expected.ForeignKeys, actual.ForeignKeys, "foreign key"),
             (e, a) => e.IsEquivalentTo(a));
 
         // IgnoreIndex is Weasel.Core API and is honoured on both sides, as the PostgreSQL, SQLite, SQL
@@ -91,7 +96,7 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithDeferra
         // extra and is dropped. Matched ignoring case, as Firebird resolves an index name.
         var expectedIndexes = expected.Indexes.Where(x => !isIgnored(expected, x)).ToArray();
         Indexes = new ItemDelta<IndexDefinition>(expectedIndexes,
-            droppable(expected, expectedIndexes, actual.Indexes.Where(x => !isIgnored(expected, x)), "index"),
+            droppable(expectedIndexes, actual.Indexes.Where(x => !isIgnored(expected, x)), "index"),
             (e, a) => e.Matches(a, expected));
 
         PrimaryKeyDifference = comparePrimaryKeys(expected, actual);
@@ -498,9 +503,9 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithDeferra
     ///     <see cref="ITable.AddOnlyMigrations" /> table the actual side is narrowed to what the model
     ///     declares, so an undeclared object never becomes an Extra and is never dropped (weasel#629).
     /// </summary>
-    private IEnumerable<T> droppable<T>(Table expected, IEnumerable<T> expectedItems,
+    private IEnumerable<T> droppable<T>(IEnumerable<T> expectedItems,
         IEnumerable<T> actualItems, string kind) where T : INamed
-        => expected.AddOnlyMigrations
+        => AddOnlyMigrations
             ? AddOnlyMigration.DeclaredOnly(expectedItems, actualItems, kind, _withheldDrops)
             : actualItems;
 

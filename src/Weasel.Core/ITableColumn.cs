@@ -1,3 +1,4 @@
+using System.Data.Common;
 namespace Weasel.Core;
 
 public interface INamed
@@ -93,6 +94,8 @@ public interface ITable : ISchemaObject
     ///     </para>
     /// </remarks>
     bool AddOnlyMigrations { get; set; }
+
+    Task<ISchemaObjectDelta> CreateDeltaAsync(DbDataReader reader, bool addOnlyMigrations, CancellationToken ct = default);
     bool HasColumn(string columnName);
     void RemoveColumn(string columnName);
 

@@ -1,3 +1,4 @@
+using System.Data.Common;
 using JasperFx.Core;
 
 namespace Weasel.Core;
@@ -323,6 +324,9 @@ public abstract class TableBase<TColumn, TIndex, TForeignKey>: SchemaObjectBase,
 
     /// <inheritdoc cref="ITable.AddOnlyMigrations" />
     public bool AddOnlyMigrations { get; set; }
+
+    public abstract Task<ISchemaObjectDelta> CreateDeltaAsync(DbDataReader reader, bool addOnlyMigrations,
+        CancellationToken ct = default);
 
     /// <inheritdoc cref="ITable.DetectColumnDrift" />
     public bool DetectColumnDrift { get; set; }

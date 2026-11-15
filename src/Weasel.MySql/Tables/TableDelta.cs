@@ -19,7 +19,12 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithReason,
     /// <inheritdoc cref="ISchemaObjectDeltaWithWithheldDrops.WithheldDrops" />
     public IReadOnlyList<string> WithheldDrops => _withheldDrops;
 
-    public TableDelta(Table expected, Table? actual): base(expected, actual)
+    public TableDelta(Table expected, Table? actual): this(expected, actual, false)
+    {
+    }
+
+    public TableDelta(Table expected, Table? actual, bool addOnlyMigrations)
+        : base(expected, actual, addOnlyMigrations || expected?.AddOnlyMigrations == true)
     {
     }
 
@@ -45,12 +50,12 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithReason,
 
         Columns = new ItemDelta<TableColumn>(
             expected.Columns,
-            droppable(expected, expected.Columns, actual.Columns, "column"),
+            droppable(expected.Columns, actual.Columns, "column"),
             (e, a) => e.IsEquivalentTo(a));
 
         ForeignKeys = new ItemDelta<ForeignKey>(
             expected.ForeignKeys,
-            droppable(expected, expected.ForeignKeys, actual.ForeignKeys, "foreign key"),
+            droppable(expected.ForeignKeys, actual.ForeignKeys, "foreign key"),
             (e, a) => e.IsEquivalentTo(a));
 
         // Ahead of the index comparison, which needs to know whether the primary key is
@@ -69,7 +74,7 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithReason,
         var expectedIndexes = expected.Indexes.Where(x => !isIgnored(expected, x)).ToArray();
         Indexes = new ItemDelta<IndexDefinition>(
             expectedIndexes,
-            droppable(expected, expectedIndexes,
+            droppable(expectedIndexes,
                 comparableIndexes(expected, actual, ForeignKeys,
                         PrimaryKeyDifference == SchemaPatchDifference.None)
                     .Where(x => !isIgnored(expected, x)),
@@ -429,9 +434,9 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithReason,
     ///     model declares, so an undeclared object never becomes an Extra and is never dropped
     ///     (weasel#629). Otherwise everything the catalog reported is in play, exactly as before.
     /// </summary>
-    private IEnumerable<T> droppable<T>(Table expected, IEnumerable<T> expectedItems,
+    private IEnumerable<T> droppable<T>(IEnumerable<T> expectedItems,
         IEnumerable<T> actualItems, string kind) where T : INamed
-        => expected.AddOnlyMigrations
+        => AddOnlyMigrations
             ? AddOnlyMigration.DeclaredOnly(expectedItems, actualItems, kind, _withheldDrops)
             : actualItems;
 }

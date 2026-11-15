@@ -17,10 +17,14 @@ public partial class Table
     ///     <c>SchemaMigration.DetermineAsync</c> — the entire migration path — and only
     ///     <see cref="FetchExistingAsync" /> saw them (weasel#474).
     /// </remarks>
-    public override async Task<ISchemaObjectDelta> CreateDeltaAsync(DbDataReader reader, CancellationToken ct = default)
+    public override Task<ISchemaObjectDelta> CreateDeltaAsync(DbDataReader reader, CancellationToken ct = default)
+        => CreateDeltaAsync(reader, false, ct);
+
+    public override async Task<ISchemaObjectDelta> CreateDeltaAsync(DbDataReader reader, bool addOnlyMigrations,
+        CancellationToken ct = default)
     {
         var existing = await ReadExistingFromReaderAsync(reader, ct).ConfigureAwait(false);
-        return new TableDelta(this, existing);
+        return new TableDelta(this, existing, addOnlyMigrations);
     }
 
     public async Task<TableDelta> FindDeltaAsync(OracleConnection conn, CancellationToken ct = default)

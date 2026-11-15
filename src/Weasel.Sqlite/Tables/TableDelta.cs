@@ -15,7 +15,12 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithRebuild
     /// <inheritdoc cref="ISchemaObjectDeltaWithWithheldDrops.WithheldDrops" />
     public IReadOnlyList<string> WithheldDrops => _withheldDrops;
 
-    public TableDelta(Table expected, Table? actual): base(expected, actual)
+    public TableDelta(Table expected, Table? actual): this(expected, actual, false)
+    {
+    }
+
+    public TableDelta(Table expected, Table? actual, bool addOnlyMigrations)
+        : base(expected, actual, addOnlyMigrations || expected?.AddOnlyMigrations == true)
     {
     }
 
@@ -76,7 +81,7 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithRebuild
         _withheldDrops.Clear();
 
         Columns = new ItemDelta<TableColumn>(expected.Columns,
-            droppable(expected, expected.Columns, actual.Columns, "column"));
+            droppable(expected.Columns, actual.Columns, "column"));
         // The comparison is not optional. Without it ItemDelta falls back to IndexDefinition's
         // Equals, which compares the name and nothing else -- so an index that changed from
         // non-unique to unique, or moved to different columns, reported no difference at all and
@@ -85,12 +90,12 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithRebuild
         var expectedIndexes = expected.Indexes.Where(x => !expected.IgnoredIndexes.Contains(x.Name)).ToArray();
         Indexes = new ItemDelta<IndexDefinition>(
             expectedIndexes,
-            droppable(expected, expectedIndexes,
+            droppable(expectedIndexes,
                 actual.Indexes.Where(x => !expected.IgnoredIndexes.Contains(x.Name)), "index"),
             (e, a) => e.Matches(a, expected));
 
         ForeignKeys = new ItemDelta<ForeignKey>(expected.ForeignKeys,
-            droppable(expected, expected.ForeignKeys, actual.ForeignKeys, "foreign key"));
+            droppable(expected.ForeignKeys, actual.ForeignKeys, "foreign key"));
 
         // Detect column renames: match Missing (new name) with Extras (old name) by structural equality
         detectRenamedColumns();
@@ -155,9 +160,9 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithRebuild
     ///     model declares, so an undeclared object never becomes an Extra and is never dropped
     ///     (weasel#629). Otherwise everything the catalog reported is in play, exactly as before.
     /// </summary>
-    private IEnumerable<T> droppable<T>(Table expected, IEnumerable<T> expectedItems,
+    private IEnumerable<T> droppable<T>(IEnumerable<T> expectedItems,
         IEnumerable<T> actualItems, string kind) where T : INamed
-        => expected.AddOnlyMigrations
+        => AddOnlyMigrations
             ? AddOnlyMigration.DeclaredOnly(expectedItems, actualItems, kind, _withheldDrops)
             : actualItems;
 
@@ -520,14 +525,14 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithRebuild
         foreach (var index in Actual.Indexes)
         {
             var declared = Expected.Indexes.Any(x => x.Name.Equals(index.Name, StringComparison.OrdinalIgnoreCase));
-            if (!declared && (Expected.AddOnlyMigrations || Expected.IgnoredIndexes.Contains(index.Name)))
+            if (!declared && (AddOnlyMigrations || Expected.IgnoredIndexes.Contains(index.Name)))
             {
                 var statement = index.ExistingCreateStatement ?? index.ToDDL(Expected);
                 carried.Indexes.Add($"{statement.Trim().TrimEnd(';')};");
             }
         }
 
-        if (!Expected.AddOnlyMigrations)
+        if (!AddOnlyMigrations)
         {
             return carried;
         }
@@ -823,7 +828,7 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithRebuild
             // An add-only table's rebuild keeps the columns the model does not declare (weasel#639),
             // so they are all still there to copy back. Asking the model for them, as a declared
             // table's rollback does, would bring every undeclared column back NULL.
-            else if (Expected.AddOnlyMigrations
+            else if (AddOnlyMigrations
                      || Expected.Columns.Any(e => e.Name.Equals(column.Name, StringComparison.OrdinalIgnoreCase)))
             {
                 targetColumns.Add(SchemaUtils.QuoteName(column.Name));

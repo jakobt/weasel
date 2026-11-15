@@ -11,7 +11,12 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithReason,
     /// <inheritdoc cref="ISchemaObjectDeltaWithWithheldDrops.WithheldDrops" />
     public IReadOnlyList<string> WithheldDrops => _withheldDrops;
 
-    public TableDelta(Table expected, Table? actual): base(expected, actual)
+    public TableDelta(Table expected, Table? actual): this(expected, actual, false)
+    {
+    }
+
+    public TableDelta(Table expected, Table? actual, bool addOnlyMigrations)
+        : base(expected, actual, addOnlyMigrations || expected?.AddOnlyMigrations == true)
     {
     }
 
@@ -42,13 +47,13 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithReason,
         _withheldDrops.Clear();
 
         Columns = new ItemDelta<TableColumn>(expected.Columns,
-            droppable(expected, expected.Columns, actual.Columns, "column"));
+            droppable(expected.Columns, actual.Columns, "column"));
         Indexes = new ItemDelta<IndexDefinition>(expected.Indexes,
-            droppable(expected, expected.Indexes, actual.Indexes, "index"),
+            droppable(expected.Indexes, actual.Indexes, "index"),
             (e, a) => e.Matches(a, Expected));
 
         ForeignKeys = new ItemDelta<ForeignKey>(expected.ForeignKeys,
-            droppable(expected, expected.ForeignKeys, actual.ForeignKeys, "foreign key"));
+            droppable(expected.ForeignKeys, actual.ForeignKeys, "foreign key"));
 
         PrimaryKeyDifference = SchemaPatchDifference.None;
 
@@ -315,9 +320,9 @@ public class TableDelta: SchemaObjectDelta<Table>, ISchemaObjectDeltaWithReason,
     ///     model declares, so an undeclared object never becomes an Extra and is never dropped
     ///     (weasel#629). Otherwise everything the catalog reported is in play, exactly as before.
     /// </summary>
-    private IEnumerable<T> droppable<T>(Table expected, IEnumerable<T> expectedItems,
+    private IEnumerable<T> droppable<T>(IEnumerable<T> expectedItems,
         IEnumerable<T> actualItems, string kind) where T : INamed
-        => expected.AddOnlyMigrations
+        => AddOnlyMigrations
             ? AddOnlyMigration.DeclaredOnly(expectedItems, actualItems, kind, _withheldDrops)
             : actualItems;
 
