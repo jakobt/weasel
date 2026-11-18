@@ -106,17 +106,84 @@ public class SqlServerBatchSplitterTests
         SqlServerBatchSplitter.Split(sql).ShouldBe(["select 1", "select 2"]);
     }
 
-    /// <summary>
-    ///     sqlcmd parity: a line reading only GO ends the batch wherever it appears, including inside
-    ///     what would otherwise be a string literal. sqlcmd does not parse literals or comments, so
-    ///     neither does this.
-    /// </summary>
     [Fact]
-    public void a_go_line_inside_a_string_literal_is_still_a_separator()
+    public void a_go_line_inside_a_string_literal_is_not_a_separator()
     {
-        var sql = "select '\nGO\n' as x";
+        var sql = "select '\nGO\n' as x\nGO\nselect 2";
 
-        SqlServerBatchSplitter.Split(sql).ShouldBe(["select '", "' as x"]);
+        SqlServerBatchSplitter.Split(sql).ShouldBe(["select '\nGO\n' as x", "select 2"]);
+    }
+
+    [Fact]
+    public void a_doubled_quote_does_not_end_the_string_literal()
+    {
+        var sql = "select 'it''s\nGO\nstill' as x\nGO\nselect 2";
+
+        SqlServerBatchSplitter.Split(sql).ShouldBe(["select 'it''s\nGO\nstill' as x", "select 2"]);
+    }
+
+    [Fact]
+    public void a_go_line_inside_a_block_comment_is_not_a_separator()
+    {
+        var sql = "/*\nDROP FUNCTION dbo.f\nGO\n*/\nCREATE FUNCTION dbo.f() RETURNS int AS BEGIN RETURN 1 END\nGO\nselect 2";
+
+        SqlServerBatchSplitter.Split(sql).ShouldBe(
+            ["/*\nDROP FUNCTION dbo.f\nGO\n*/\nCREATE FUNCTION dbo.f() RETURNS int AS BEGIN RETURN 1 END", "select 2"]);
+    }
+
+    [Fact]
+    public void block_comments_do_not_nest()
+    {
+        var sql = "select 1 /* a /* b */\nGO\nselect 2";
+
+        SqlServerBatchSplitter.Split(sql).ShouldBe(["select 1 /* a /* b */", "select 2"]);
+    }
+
+    [Fact]
+    public void a_block_comment_opener_inside_a_line_comment_is_ignored()
+    {
+        var sql = "select 1 -- not a /* comment\nGO\nselect 2";
+
+        SqlServerBatchSplitter.Split(sql).ShouldBe(["select 1 -- not a /* comment", "select 2"]);
+    }
+
+    [Fact]
+    public void a_quote_inside_a_line_comment_is_ignored()
+    {
+        var sql = "select 1 -- it's\nGO\nselect 2";
+
+        SqlServerBatchSplitter.Split(sql).ShouldBe(["select 1 -- it's", "select 2"]);
+    }
+
+    [Fact]
+    public void a_go_line_inside_a_bracketed_identifier_is_not_a_separator()
+    {
+        var sql = "select 1 as [a\nGO\nb]\nGO\nselect 2";
+
+        SqlServerBatchSplitter.Split(sql).ShouldBe(["select 1 as [a\nGO\nb]", "select 2"]);
+    }
+
+    [Fact]
+    public void a_go_line_inside_a_quoted_identifier_is_not_a_separator()
+    {
+        var sql = "select 1 as \"a\nGO\nb\"\nGO\nselect 2";
+
+        SqlServerBatchSplitter.Split(sql).ShouldBe(["select 1 as \"a\nGO\nb\"", "select 2"]);
+    }
+
+    [Fact]
+    public void crlf_input_inside_a_block_comment_does_not_split()
+    {
+        var sql = "/*\r\nGO\r\n*/\r\nselect 1\r\nGO\r\nselect 2";
+
+        SqlServerBatchSplitter.Split(sql).ShouldBe(["/*\r\nGO\r\n*/\r\nselect 1", "select 2"]);
+    }
+
+    [Fact]
+    public void a_go_line_inside_a_block_comment_is_not_reported_as_a_separator()
+    {
+        SqlServerBatchSplitter.ContainsSeparator("/*\nGO\n*/\nselect 1").ShouldBeFalse();
+        SqlServerBatchSplitter.ContainsSeparator("select 1\nGO\nselect 2").ShouldBeTrue();
     }
 
     [Fact]

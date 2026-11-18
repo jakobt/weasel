@@ -8,12 +8,11 @@ namespace Weasel.SqlServer;
 ///     raise "Incorrect syntax near 'GO'" if it is left in the text.
 /// </summary>
 /// <remarks>
-///     The semantics are sqlcmd's, deliberately including its bluntness: a line reading only
-///     <c>GO</c> ends the batch wherever it appears, because sqlcmd does not parse string literals or
-///     comments and neither does this. A definition that needs a line of its own reading <c>GO</c>
-///     inside a literal is not supported. The optional repeat count is accepted and ignored, so the
-///     batch runs once: nothing in Weasel emits a count, and repeating DDL is never what a migration
-///     means.
+///     The semantics are sqlcmd's: a line reading only <c>GO</c> ends the batch unless it lies inside
+///     a string literal, a quoted or bracketed identifier, or a block comment. Like sqlcmd, block
+///     comments do not nest, so the first <c>*/</c> closes one, and a <c>--</c> comment runs to the end
+///     of its line. The optional repeat count is accepted and ignored, so the batch runs once: nothing
+///     in Weasel emits a count, and repeating DDL is never what a migration means.
 /// </remarks>
 public static class SqlServerBatchSplitter
 {
@@ -50,7 +49,7 @@ public static class SqlServerBatchSplitter
     ///     caller that refuses input on its own idea of what a <c>GO</c> line is could disagree with the
     ///     splitter, which is the only way such a refusal could be worse than no refusal at all.
     /// </summary>
-    internal static bool ContainsSeparator(string sql) => _separator.IsMatch(sql);
+    internal static bool ContainsSeparator(string sql) => SeparatorLines(sql).Any();
 
     /// <summary>
     ///     The non-empty batches of <paramref name="sql" />, in order, each trimmed of surrounding
@@ -64,16 +63,98 @@ public static class SqlServerBatchSplitter
         }
 
         var batches = new List<string>();
+        var start = 0;
 
-        foreach (var candidate in _separator.Split(sql))
+        foreach (var separator in SeparatorLines(sql).Append(new Range(sql.Length, sql.Length)))
         {
-            var batch = candidate.Trim();
+            var batch = sql[start..separator.Start].Trim();
             if (batch.Length > 0)
             {
                 batches.Add(batch);
             }
+
+            start = separator.End.Value;
         }
 
         return batches;
+    }
+
+    private static IEnumerable<Range> SeparatorLines(string sql)
+    {
+        var state = Lexical.Code;
+        var lineStart = 0;
+
+        while (lineStart < sql.Length)
+        {
+            var newline = sql.IndexOf('\n', lineStart);
+            var lineEnd = newline < 0 ? sql.Length : newline;
+
+            if (state == Lexical.Code && _separator.IsMatch(sql[lineStart..lineEnd]))
+            {
+                yield return new Range(lineStart, newline < 0 ? sql.Length : newline + 1);
+            }
+            else
+            {
+                state = Advance(sql, lineStart, lineEnd, state);
+            }
+
+            lineStart = lineEnd + 1;
+        }
+    }
+
+    private static Lexical Advance(string sql, int from, int to, Lexical state)
+    {
+        for (var i = from; i < to; i++)
+        {
+            var c = sql[i];
+            var next = i + 1 < to ? sql[i + 1] : '\0';
+
+            switch (state)
+            {
+                case Lexical.BlockComment when c == '*' && next == '/':
+                    state = Lexical.Code;
+                    i++;
+                    break;
+                case Lexical.String when c == '\'':
+                case Lexical.QuotedIdentifier when c == '"':
+                case Lexical.BracketedIdentifier when c == ']':
+                    if (next == c)
+                    {
+                        i++;
+                    }
+                    else
+                    {
+                        state = Lexical.Code;
+                    }
+
+                    break;
+                case Lexical.Code when c == '-' && next == '-':
+                    return Lexical.Code;
+                case Lexical.Code when c == '/' && next == '*':
+                    state = Lexical.BlockComment;
+                    i++;
+                    break;
+                case Lexical.Code when c == '\'':
+                    state = Lexical.String;
+                    break;
+                case Lexical.Code when c == '"':
+                    state = Lexical.QuotedIdentifier;
+                    break;
+                case Lexical.Code when c == '[':
+                    state = Lexical.BracketedIdentifier;
+                    break;
+            }
+        }
+
+        return state;
+    }
+
+    private enum Lexical
+    {
+        Code,
+        String,
+        QuotedIdentifier,
+        BracketedIdentifier,
+        BlockComment
     }
 }

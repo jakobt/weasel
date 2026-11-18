@@ -92,16 +92,14 @@ public class stored_procedure_ddl
     }
 
     /// <summary>
-    ///     The one hazard the <c>GO</c> bracketing carries: neither sqlcmd nor Weasel's splitter parses
-    ///     string literals, so a line reading only <c>GO</c> inside a body would end the batch in the
-    ///     middle of the definition. Emission refuses it rather than writing a script that splits in the
-    ///     wrong place.
+    ///     The one hazard the <c>GO</c> bracketing carries: a line reading only <c>GO</c> in the code of a
+    ///     body would end the batch in the middle of the definition. Emission refuses it rather than
+    ///     writing a script that splits in the wrong place.
     /// </summary>
     [Fact]
     public void a_body_carrying_a_go_line_is_refused_on_both_paths()
     {
-        // The reachable shape: T-SQL that builds a script, where GO is data rather than a directive
-        var body = $"CREATE PROCEDURE dbo.p AS SET @script = 'SELECT 1{Environment.NewLine}GO{Environment.NewLine}';";
+        var body = $"CREATE PROCEDURE dbo.p AS SELECT 1{Environment.NewLine}GO{Environment.NewLine}SELECT 2;";
         var procedure = new StoredProcedure(theIdentifier, body);
 
         var create = Should.Throw<InvalidOperationException>(() => writeCreate(procedure));
@@ -130,10 +128,20 @@ public class stored_procedure_ddl
     }
 
     [Fact]
+    public void a_go_line_inside_a_string_literal_or_comment_is_accepted()
+    {
+        var literal = $"CREATE PROCEDURE dbo.p AS SET @script = 'SELECT 1{Environment.NewLine}GO{Environment.NewLine}';";
+        var comment = $"CREATE PROCEDURE dbo.p AS /*{Environment.NewLine}GO{Environment.NewLine}*/ SELECT 1;";
+
+        Should.NotThrow(() => writeCreate(new StoredProcedure(theIdentifier, literal)));
+        Should.NotThrow(() => writeCreateOrAlter(new StoredProcedure(theIdentifier, comment)));
+    }
+
+    [Fact]
     public void the_refusal_names_the_procedure_that_carries_it()
     {
         var other = new SqlServerObjectName("reporting", "rebuild");
-        var body = $"CREATE PROCEDURE reporting.rebuild AS SELECT '{Environment.NewLine}GO{Environment.NewLine}';";
+        var body = $"CREATE PROCEDURE reporting.rebuild AS SELECT 1{Environment.NewLine}GO{Environment.NewLine}SELECT 2;";
 
         Should.Throw<InvalidOperationException>(
                 () => writeCreate(new StoredProcedure(other, body)))
