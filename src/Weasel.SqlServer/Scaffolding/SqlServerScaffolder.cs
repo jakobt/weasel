@@ -154,7 +154,7 @@ public static class SqlServerScaffolder
             files["ScaffoldedSql.cs"] = SchemaCodeEmitter.EmitSqlReader(options);
         }
 
-        files[$"{options.DatabaseClassName}.cs"] = emitDatabase(ordered, naming, creationOrder.Count > 0, options);
+        files[$"{options.DatabaseClassName}.cs"] = emitDatabase(ordered, naming, creationOrder.Count > 0, metadata, options);
 
         if (options.EmitProjectFile)
         {
@@ -493,6 +493,7 @@ where o.name = @name and s.name = @schema;";
         IReadOnlyList<ScaffoldedTable> tables,
         ScaffoldNaming naming,
         bool hasOtherObjects,
+        ScaffoldMetadata metadata,
         ScaffoldEmissionOptions options)
     {
         var writer = new CSharpSourceWriter()
@@ -505,6 +506,15 @@ where o.name = @name and s.name = @schema;";
             t.Line($"    : base({CSharpSourceWriter.Quote(options.DatabaseClassName)}, connectionString, autoCreate)");
             t.Block("", body =>
             {
+                var databaseOptions = new List<string>();
+                if (metadata.AllowSnapshotIsolation) databaseOptions.Add("AllowSnapshotIsolation = true");
+                if (metadata.ReadCommittedSnapshot) databaseOptions.Add("ReadCommittedSnapshot = true");
+                if (databaseOptions.Count > 0)
+                {
+                    body.Line($"Options = new DatabaseOptions {{ {databaseOptions.Join(", ")} }};");
+                    body.Line();
+                }
+
                 foreach (var table in tables)
                 {
                     body.Line($"AddTable(new {naming[table.Table.Identifier, ScaffoldKind.Table]}());");

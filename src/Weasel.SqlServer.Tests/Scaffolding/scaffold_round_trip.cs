@@ -429,6 +429,35 @@ where t.name = 'reading' and i.name = 'ix_reading_mixed' and c.name = 'taken_at'
     }
 
     [Fact]
+    public async Task a_disabled_foreign_key_is_recreated_disabled()
+    {
+        var result = await scaffold(
+            "create table roundtrip.owner (id int not null constraint pk_owner primary key)",
+            "create table roundtrip.owned (id int not null constraint pk_owned primary key, owner_id int not null, other_id int not null)",
+            "alter table roundtrip.owned add constraint fk_owned_owner foreign key (owner_id) references roundtrip.owner (id)",
+            "alter table roundtrip.owned nocheck constraint fk_owned_owner",
+            "alter table roundtrip.owned add constraint fk_owned_other foreign key (other_id) references roundtrip.owner (id)");
+
+        await assertNoDrift(result, "DisabledForeignKeyRoundTrip");
+
+        await ResetSchema();
+        var database = ScaffoldCompilationHarness.BuildDatabase(
+            result, "DisabledForeignKeyApply", ConnectionSource.ConnectionString, "RoundTrip.Generated");
+        await database.ApplyAllConfiguredChangesToDatabaseAsync();
+
+        var states = new Dictionary<string, (bool Disabled, bool NotTrusted)>();
+        await using (var reader = await theConnection.CreateCommand(
+                         "select name, is_disabled, is_not_trusted from sys.foreign_keys where parent_object_id = object_id('roundtrip.owned')")
+                         .ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync()) states[reader.GetString(0)] = (reader.GetBoolean(1), reader.GetBoolean(2));
+        }
+
+        states["fk_owned_owner"].ShouldBe((true, true));
+        states["fk_owned_other"].ShouldBe((false, false));
+    }
+
+    [Fact]
     public async Task a_view_is_created_after_the_view_it_selects_from()
     {
         var result = await scaffold(

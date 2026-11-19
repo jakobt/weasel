@@ -157,13 +157,24 @@ internal static class SchemaCodeEmitter
         {
             writer.Line();
             writer.Line($"ForeignKeys.Add(new ForeignKey({CSharpSourceWriter.Quote(fk.Name)})");
+            var properties = new List<string>
+            {
+                $"LinkedTable = {objectName(fk.LinkedTable!)}",
+                $"ColumnNames = {CSharpSourceWriter.StringArray(fk.ColumnNames)}",
+                $"LinkedNames = {CSharpSourceWriter.StringArray(fk.LinkedNames)}",
+                $"DeleteAction = Weasel.Core.CascadeAction.{fk.DeleteAction}",
+                $"UpdateAction = Weasel.Core.CascadeAction.{fk.UpdateAction}"
+            };
+            if (fk.IsDisabled == true) properties.Add("IsDisabled = true");
+            if (fk.IsNotForReplication == true) properties.Add("IsNotForReplication = true");
+            if (fk.IsNotTrusted == true) properties.Add("IsNotTrusted = true");
+
             writer.Block("", body =>
             {
-                body.Line($"LinkedTable = {objectName(fk.LinkedTable!)},");
-                body.Line($"ColumnNames = {CSharpSourceWriter.StringArray(fk.ColumnNames)},");
-                body.Line($"LinkedNames = {CSharpSourceWriter.StringArray(fk.LinkedNames)},");
-                body.Line($"DeleteAction = Weasel.Core.CascadeAction.{fk.DeleteAction},");
-                body.Line($"UpdateAction = Weasel.Core.CascadeAction.{fk.UpdateAction}");
+                for (var i = 0; i < properties.Count; i++)
+                {
+                    body.Line(properties[i] + (i < properties.Count - 1 ? "," : ""));
+                }
             }, "});");
         }
     }

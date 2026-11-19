@@ -17,6 +17,8 @@ internal sealed class ScaffoldMetadata
     public List<TriggerRow> Triggers { get; } = [];
     public List<SequenceRow> Sequences { get; } = [];
     public List<(DbObjectName Referencing, DbObjectName Referenced)> Dependencies { get; } = [];
+    public bool AllowSnapshotIsolation { get; private set; }
+    public bool ReadCommittedSnapshot { get; private set; }
 
     private const string Sql = @"
 declare @collation sysname = convert(sysname, databasepropertyex(db_name(), 'Collation'));
@@ -41,20 +43,7 @@ from sys.indexes i
 where i.type_desc not in ('HEAP', 'CLUSTERED', 'NONCLUSTERED', 'JSON');
 
 select category, item from (
-    select 'FOREIGN KEY created WITH NOCHECK is recreated as trusted' as category,
-           s.name + '.' + t.name + '.' + fk.name as item
-    from sys.foreign_keys fk inner join sys.tables t on t.object_id = fk.parent_object_id inner join sys.schemas s on s.schema_id = t.schema_id
-    where fk.is_not_trusted = 1 and fk.is_disabled = 0
-    union all
-    select 'disabled FOREIGN KEY (NOCHECK CONSTRAINT) is recreated enabled', s.name + '.' + t.name + '.' + fk.name
-    from sys.foreign_keys fk inner join sys.tables t on t.object_id = fk.parent_object_id inner join sys.schemas s on s.schema_id = t.schema_id
-    where fk.is_disabled = 1
-    union all
-    select 'FOREIGN KEY NOT FOR REPLICATION is recreated without it', s.name + '.' + t.name + '.' + fk.name
-    from sys.foreign_keys fk inner join sys.tables t on t.object_id = fk.parent_object_id inner join sys.schemas s on s.schema_id = t.schema_id
-    where fk.is_not_for_replication = 1
-    union all
-    select 'CHECK constraint created WITH NOCHECK is recreated as trusted', s.name + '.' + t.name + '.' + cc.name
+    select 'CHECK constraint created WITH NOCHECK is recreated as trusted' as category, s.name + '.' + t.name + '.' + cc.name as item
     from sys.check_constraints cc inner join sys.tables t on t.object_id = cc.parent_object_id inner join sys.schemas s on s.schema_id = t.schema_id
     where cc.is_not_trusted = 1 or cc.is_disabled = 1
     union all
@@ -142,6 +131,8 @@ from sys.sql_expression_dependencies d
     left join sys.triggers rtr on rtr.object_id = d.referenced_id
 where d.referenced_id is not null and d.referencing_id <> d.referenced_id
   and d.referenced_class = 1;
+
+select snapshot_isolation_state, is_read_committed_snapshot_on from sys.databases where database_id = db_id();
 ";
 
     public static async Task<ScaffoldMetadata> ReadAsync(SqlConnection conn, CancellationToken ct)
@@ -221,6 +212,11 @@ where d.referenced_id is not null and d.referencing_id <> d.referenced_id
                 new SqlServerObjectName(reader.GetString(0), reader.GetString(1)),
                 new SqlServerObjectName(reader.GetString(2), reader.GetString(3))));
         }
+
+        await reader.NextResultAsync(ct).ConfigureAwait(false);
+        await reader.ReadAsync(ct).ConfigureAwait(false);
+        metadata.AllowSnapshotIsolation = reader.GetByte(0) is 1 or 3;
+        metadata.ReadCommittedSnapshot = reader.GetBoolean(1);
 
         return metadata;
     }

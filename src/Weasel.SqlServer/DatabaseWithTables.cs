@@ -39,8 +39,12 @@ public class DatabaseWithTables: DatabaseBase<SqlConnection>, IDatabaseWithTable
         _tables.Add(table);
     }
 
+    public DatabaseOptions? Options { get; set; }
+
     public override IFeatureSchema[] BuildFeatureSchemas()
-        => [new TableFeatureSchema(Migrator, _tables)];
+        => Options == null
+            ? [new TableFeatureSchema(Migrator, _tables)]
+            : [new DatabaseOptionsFeature(Migrator, Options), new TableFeatureSchema(Migrator, _tables)];
 
     public override DatabaseDescriptor Describe()
     {
@@ -60,5 +64,12 @@ public class DatabaseWithTables: DatabaseBase<SqlConnection>, IDatabaseWithTable
     {
         public override Type StorageType => typeof(DatabaseWithTables);
         protected override IEnumerable<ISchemaObject> schemaObjects() => tables;
+    }
+
+    private class DatabaseOptionsFeature(Migrator migrator, DatabaseOptions options)
+        : FeatureSchemaBase("DatabaseOptions", migrator)
+    {
+        public override Type StorageType => typeof(DatabaseWithTables);
+        protected override IEnumerable<ISchemaObject> schemaObjects() => [options];
     }
 }
